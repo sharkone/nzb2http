@@ -36,13 +36,15 @@ cherrypy.tools.count_connection_on_end_request = cherrypy.Tool('on_end_request',
 ################################################################################
 class Server:
     ############################################################################
-    def __init__(self, nzb_path):
+    def __init__(self, port, nzb_path):
+        self.port     = port
         self.nzb_path = nzb_path
 
     ############################################################################
     def start(self):
         cherrypy.config.update({'engine.autoreload.on':False})
         cherrypy.config.update({'server.socket_host':'0.0.0.0'})
+        cherrypy.config.update({'server.socket_port':self.port})
         cherrypy.tree.mount(ServerRoot(self.nzb_path))
 
         cherrypy.engine.start()
@@ -97,6 +99,7 @@ class ServerRoot:
         if not rar_file or not rar_file.is_ready:
             return 'Data is not ready yet!'
 
+        print '-----> {0} - {1}'.format(rar_file.content_file_name, rar_file.content_file_size)
         content_type = mimetypes.types_map.get(os.path.splitext(rar_file.content_file_name), None)
         if not content_type:
             if rar_file.content_file_name.endswith('.mkv'):
@@ -104,7 +107,7 @@ class ServerRoot:
             elif rar_file.content_file_name.endswith('.mp4'):
                 content_type = 'video/mp4'
     
-        return serve_fileobj(rar_file, content_type=content_type, content_length=rar_file.content_file_size, last_modified=time.time(), name=rar_file.content_file_name)
+        return serve_fileobj(rar_file, content_type=content_type, content_length=rar_file.content_file_size, last_modified=time.time(), name=rar_file.content_file_name, debug=True)
 
     ############################################################################
     @cherrypy.expose

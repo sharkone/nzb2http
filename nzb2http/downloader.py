@@ -162,7 +162,7 @@ class Downloader(threading.Thread):
     ############################################################################
     def _write_content_data(self, content_file_name, content_file_offset, content_file_data):
         if not os.path.isdir(self.nzb_dir):
-            os.mkdir(self.nzb_dir)
+            os.makedirs(self.nzb_dir)
 
         if not os.path.isfile(os.path.join(self.nzb_dir, content_file_name)):
             open(os.path.join(self.nzb_dir, content_file_name), 'a').close()
