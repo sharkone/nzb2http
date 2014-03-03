@@ -27,8 +27,8 @@ def main():
     global RUNNING
 
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument('server', help='Usenet server (username:password@host:port')
-    arg_parser.add_argument('nzb_path', help='NZB file to use')
+    arg_parser.add_argument('server', help='Usenet server (username:password@host:port)')
+    arg_parser.add_argument('nzb_path', help='NZB file or URL')
     arg_parser.add_argument('-p', '--http-port', default=8080, help='Port used for HTTP server')
     arg_parser.add_argument('-d', '--download-dir', default='.', help='Directory to use for downloading')
     arg_parser.add_argument('-s', '--ssl', action='store_true', help='Use SSL connection')
