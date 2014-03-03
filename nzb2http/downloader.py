@@ -13,15 +13,15 @@ import Queue
 ################################################################################
 class Downloader(threading.Thread):
     ############################################################################
-    def __init__(self, nntp_credentials, nzb_path, download_dir):
+    def __init__(self, nntp_credentials, download_dir, nzb_name, nzb_content):
         threading.Thread.__init__(self)
         self.nntp_credentials = nntp_credentials
-        self.nzb_path         = nzb_path
-        self.nzb_dir          = os.path.join(download_dir, self.nzb_path[:-4])
+        self.download_dir     = download_dir
+        self.nzb_name         = nzb_name
+        self.nzb_dir          = os.path.join(self.download_dir, self.nzb_name[:-4])
 
-        sys.stdout.write('[nzb2http][downloader] Downloading {0}\n'.format(self.nzb_path))
-        with open(self.nzb_path, 'r') as nzb_file:
-            self.nzb_files = pynzb.nzb_parser.parse(nzb_file.read())
+        sys.stdout.write('[nzb2http][downloader] Downloading {0}\n'.format(nzb_name))
+        self.nzb_files = pynzb.nzb_parser.parse(nzb_content)
         #sys.stdout.write('[nzb2http][downloader] {0} files found\n'.format(len(self.nzb_files)))
 
         self.nzb_files = self._sort_files(self.nzb_files)

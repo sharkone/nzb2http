@@ -49,24 +49,22 @@ def main():
                        }
 
     if os.path.isfile(args.nzb_path):
-        nzb_path = args.nzb_path
+        nzb_name = os.path.basename(args.nzb_path)
+        with open(args.nzb_path, 'r') as nzb:
+            nzb_content = nzb.read()
     else:
-        filename, headers = urllib.urlretrieve(args.nzb_path, 'temp.nzb')
-        new_filename      = re.search('.+filename=(.+)$', headers['Content-Disposition']).group(1)  
-        os.rename(filename, new_filename)
-        nzb_path          = new_filename
+        filename, headers = urllib.urlretrieve(args.nzb_path)
+        nzb_name          = re.search('.+filename=(.+)$', headers['Content-Disposition']).group(1)  
+        with open(filename, 'r') as nzb:
+            nzb_content = nzb.read()        
 
-    downloader = nzb2http.downloader.Downloader(nntp_credentials, nzb_path, args.download_dir)
-    downloader.start()
-
-    server = nzb2http.server.Server(int(args.http_port), os.path.join(args.download_dir, nzb_path))
+    server = nzb2http.server.Server(int(args.http_port), nntp_credentials, args.download_dir, nzb_name, nzb_content)
     server.start()
 
     RUNNING = True
     while RUNNING and not server.has_timeouted():
         time.sleep(1)
 
-    downloader.stop()
     server.stop()
 
 ################################################################################

@@ -1,6 +1,7 @@
 ################################################################################
 import cherrypy
 import datetime
+import downloader
 import json
 import mimetypes
 import os
@@ -36,21 +37,23 @@ cherrypy.tools.count_connection_on_end_request = cherrypy.Tool('on_end_request',
 ################################################################################
 class Server:
     ############################################################################
-    def __init__(self, port, nzb_path):
-        self.port     = port
-        self.nzb_path = nzb_path
+    def __init__(self, port, nntp_credentials, download_dir, nzb_name, nzb_content):
+        self.port       = port
+        self.downloader = downloader.Downloader(nntp_credentials, download_dir, nzb_name, nzb_content)
 
     ############################################################################
     def start(self):
         cherrypy.config.update({'engine.autoreload.on':False})
         cherrypy.config.update({'server.socket_host':'0.0.0.0'})
         cherrypy.config.update({'server.socket_port':self.port})
-        cherrypy.tree.mount(ServerRoot(self.nzb_path))
+        cherrypy.tree.mount(ServerRoot(self.downloader))
 
         cherrypy.engine.start()
+        self.downloader.start()
 
     ############################################################################
     def stop(self):
+        self.downloader.stop()
         cherrypy.engine.exit()
 
     ############################################################################
@@ -61,9 +64,8 @@ class Server:
 ################################################################################
 class ServerRoot:
     ############################################################################
-    def __init__(self, nzb_path):
-        self.nzb_path = nzb_path
-        self.nzb_dir  = self.nzb_path[:-4]
+    def __init__(self, downloader):
+        self.downloader = downloader
 
     ############################################################################
     @cherrypy.expose
@@ -73,8 +75,8 @@ class ServerRoot:
         rar_file = self._get_rar_file()
 
         result =  {
-                      'nzb_file':     os.path.basename(self.nzb_path),
-                      'ready':        rar_file.is_ready if rar_file else None
+                      'nzb':    os.path.basename(self.downloader.nzb_name),
+                      'ready':  rar_file.is_ready if rar_file else None
                   }
 
         return json.dumps(result)
@@ -106,7 +108,7 @@ class ServerRoot:
             elif rar_file.content_file_name.endswith('.mp4'):
                 content_type = 'video/mp4'
     
-        return serve_fileobj(rar_file, content_type=content_type, content_length=rar_file.content_file_size, last_modified=time.time(), name=rar_file.content_file_name, debug=True)
+        return serve_fileobj(rar_file, content_type=content_type, content_length=rar_file.content_file_size, last_modified=time.time(), name=rar_file.content_file_name)
 
     ############################################################################
     @cherrypy.expose
@@ -120,7 +122,7 @@ class ServerRoot:
         RE_PART_01 = re.compile('.part01.rar$')
         RE_001     = re.compile('.001$')
 
-        rar_filenames = [os.path.join(dirpath, f) for dirpath, dirnames, files in os.walk(self.nzb_dir ) for f in files if ((f.endswith('.rar') and (not 'subs' in f) and (not RE_PART_XX.search(f) or RE_PART_01.search(f))) or RE_001.search(f))]
+        rar_filenames = [os.path.join(dirpath, f) for dirpath, dirnames, files in os.walk(self.downloader.nzb_dir) for f in files if ((f.endswith('.rar') and (not 'subs' in f) and (not RE_PART_XX.search(f) or RE_PART_01.search(f))) or RE_001.search(f))]
         if rar_filenames:
             return rar_filenames[0]
 
