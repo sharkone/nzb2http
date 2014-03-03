@@ -99,7 +99,6 @@ class ServerRoot:
         if not rar_file or not rar_file.is_ready:
             return 'Data is not ready yet!'
 
-        print '-----> {0} - {1}'.format(rar_file.content_file_name, rar_file.content_file_size)
         content_type = mimetypes.types_map.get(os.path.splitext(rar_file.content_file_name), None)
         if not content_type:
             if rar_file.content_file_name.endswith('.mkv'):
