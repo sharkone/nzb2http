@@ -25,6 +25,7 @@ class ConnectionCounterTool(cherrypy.Tool):
 
     ############################################################################
     def _setup(self):
+        cherrypy.Tool._setup(self)
         cherrypy.serving.request.hooks.attach('on_end_request', self._on_end_request)
 
     ############################################################################
@@ -35,7 +36,7 @@ class ConnectionCounterTool(cherrypy.Tool):
     def _on_end_request(self):
         self.connection_count = self.connection_count - 1
         if not self.connection_count:
-            sell.connection_count = datetime.datetime.now()
+            self.last_connection_time = datetime.datetime.now()
 
 cherrypy.tools.connectioncounter = ConnectionCounterTool()
 
@@ -72,7 +73,7 @@ class Server:
     def __init__(self, port, nntp_credentials, download_dir, nzb_name, nzb_content):
         self.port = port
         
-        cherrypy.engine.autoshutdown  = AutoShutdownMonitor(cherrypy.engine, 30)
+        cherrypy.engine.autoshutdown = AutoShutdownMonitor(cherrypy.engine, 30)
         cherrypy.engine.autoshutdown.subscribe()
         
         cherrypy.engine.nzbdownloader = NzbDownloaderPlugin(cherrypy.engine, nntp_credentials, download_dir, nzb_name, nzb_content)
@@ -80,7 +81,6 @@ class Server:
 
     ############################################################################
     def run(self):
-        cherrypy.config.update({'engine.autoreload.on':False})
         cherrypy.config.update({'server.socket_host':'0.0.0.0'})
         cherrypy.config.update({'server.socket_port':self.port})
 
@@ -131,24 +131,14 @@ class ServerRoot:
     ############################################################################
     @cherrypy.expose
     def shutdown(self):
-        os.kill(os.getpid(), signal.SIGINT)
+        cherrypy.engine.exit()
         return 'OK'
-
-    ############################################################################
-    def _get_rar_path(self):
-        RE_PART_XX = re.compile('.part\d+.rar$')
-        RE_PART_01 = re.compile('.part01.rar$')
-        RE_001     = re.compile('.001$')
-
-        rar_filenames = [os.path.join(dirpath, f) for dirpath, dirnames, files in os.walk(cherrypy.engine.nzbdownloader.downloader.nzb_dir) for f in files if ((f.endswith('.rar') and (not 'subs' in f) and (not RE_PART_XX.search(f) or RE_PART_01.search(f))) or RE_001.search(f))]
-        if rar_filenames:
-            return rar_filenames[0]
 
     ############################################################################
     def _get_rar_file(self):
         global RAR_FILE
 
-        rar_path = self._get_rar_path()
+        rar_path = cherrypy.engine.nzbdownloader.downloader.get_first_rar_path()
         if not RAR_FILE and rar_path != None:
             RAR_FILE = rarfile.RarFile(rar_path)
 
