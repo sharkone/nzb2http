@@ -13,26 +13,31 @@ import time
 from cherrypy.lib.static import serve_fileobj
 
 ################################################################################
-RAR_FILE             = None
-CONNECTION_COUNT     = 0
-LAST_CONNECTION_TIME = datetime.datetime.now()
+RAR_FILE = None
 
 ################################################################################
-def count_connection_before_handler():
-    global CONNECTION_COUNT
-    CONNECTION_COUNT = CONNECTION_COUNT + 1
+class AutoShutdown(cherrypy.Tool):
+    def __init__(self, timeout):
+        cherrypy.Tool.__init__(self, 'before_handler', self._before_handler)
+        self.timeout              = timeout
+        self.connection_count     = 0
+        self.last_connection_time = datetime.datetime.now()
 
-################################################################################
-def count_connection_on_end_request():
-    global CONNECTION_COUNT, LAST_CONNECTION_TIME
-    CONNECTION_COUNT = CONNECTION_COUNT - 1
+    def has_timeouted(self):
+        return not self.connection_count and (datetime.datetime.now() - self.last_connection_time) >= datetime.timedelta(seconds=self.timeout)
 
-    if not CONNECTION_COUNT:
-        LAST_CONNECTION_TIME = datetime.datetime.now()
+    def _setup(self):
+        cherrypy.serving.request.hooks.attach('on_end_request', self._on_end_request)
 
-################################################################################
-cherrypy.tools.count_connection_before_handler = cherrypy.Tool('before_handler', count_connection_before_handler)
-cherrypy.tools.count_connection_on_end_request = cherrypy.Tool('on_end_request', count_connection_on_end_request)
+    def _before_handler(self):
+        self.connection_count = self.connection_count + 1
+
+    def _on_end_request(self):
+        self.connection_count = self.connection_count - 1
+        if not self.connection_count:
+            sell.connection_count = datetime.datetime.now()
+
+cherrypy.tools.autoshutdown = AutoShutdown(30)
 
 ################################################################################
 class Server:
@@ -58,8 +63,7 @@ class Server:
 
     ############################################################################
     def has_timeouted(self):
-        global CONNECTION_COUNT
-        return not CONNECTION_COUNT and (datetime.datetime.now() - LAST_CONNECTION_TIME) >= datetime.timedelta(seconds=30)
+        return cherrypy.tools.autoshutdown.has_timeouted()
 
 ################################################################################
 class ServerRoot:
@@ -69,8 +73,7 @@ class ServerRoot:
 
     ############################################################################
     @cherrypy.expose
-    @cherrypy.tools.count_connection_before_handler()
-    @cherrypy.tools.count_connection_on_end_request()
+    @cherrypy.tools.autoshutdown()
     def index(self):
         rar_file = self._get_rar_file()
 
@@ -83,8 +86,7 @@ class ServerRoot:
 
     ############################################################################
     @cherrypy.expose
-    @cherrypy.tools.count_connection_before_handler()
-    @cherrypy.tools.count_connection_on_end_request()
+    @cherrypy.tools.autoshutdown()
     def download(self):
         rar_file = self._get_rar_file()
         if not rar_file or not rar_file.is_ready:
@@ -94,8 +96,7 @@ class ServerRoot:
 
     ############################################################################
     @cherrypy.expose
-    @cherrypy.tools.count_connection_before_handler()
-    @cherrypy.tools.count_connection_on_end_request()
+    @cherrypy.tools.autoshutdown()
     def video(self):
         rar_file = self._get_rar_file()
         if not rar_file or not rar_file.is_ready:
