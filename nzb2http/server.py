@@ -16,69 +16,86 @@ from cherrypy.lib.static import serve_fileobj
 RAR_FILE = None
 
 ################################################################################
-class AutoShutdown(cherrypy.Tool):
-    def __init__(self, timeout):
+class ConnectionCounterTool(cherrypy.Tool):
+    ############################################################################
+    def __init__(self):
         cherrypy.Tool.__init__(self, 'before_handler', self._before_handler)
-        self.timeout              = timeout
         self.connection_count     = 0
         self.last_connection_time = datetime.datetime.now()
 
-    def has_timeouted(self):
-        return not self.connection_count and (datetime.datetime.now() - self.last_connection_time) >= datetime.timedelta(seconds=self.timeout)
-
+    ############################################################################
     def _setup(self):
         cherrypy.serving.request.hooks.attach('on_end_request', self._on_end_request)
 
+    ############################################################################
     def _before_handler(self):
         self.connection_count = self.connection_count + 1
 
+    ############################################################################
     def _on_end_request(self):
         self.connection_count = self.connection_count - 1
         if not self.connection_count:
             sell.connection_count = datetime.datetime.now()
 
-cherrypy.tools.autoshutdown = AutoShutdown(30)
+cherrypy.tools.connectioncounter = ConnectionCounterTool()
 
 ################################################################################
-class Server:
+class AutoShutdownMonitor(cherrypy.process.plugins.Monitor):
     ############################################################################
-    def __init__(self, port, nntp_credentials, download_dir, nzb_name, nzb_content):
-        self.port       = port
+    def __init__(self, bus, timeout):
+        cherrypy.process.plugins.Monitor.__init__(self, bus, self._check_for_timeout, frequency=5)
+        self.timeout = timeout
+
+    ############################################################################
+    def _check_for_timeout(self):
+        if not cherrypy.tools.connectioncounter.connection_count and (datetime.datetime.now() - cherrypy.tools.connectioncounter.last_connection_time) >= datetime.timedelta(seconds=self.timeout):
+            cherrypy.engine.exit()
+
+################################################################################
+class NzbDownloaderPlugin(cherrypy.process.plugins.SimplePlugin):
+    ############################################################################
+    def __init__(self, bus, nntp_credentials, download_dir, nzb_name, nzb_content):
+        cherrypy.process.plugins.SimplePlugin.__init__(self, bus)
         self.downloader = downloader.Downloader(nntp_credentials, download_dir, nzb_name, nzb_content)
 
     ############################################################################
     def start(self):
-        cherrypy.config.update({'engine.autoreload.on':False})
-        cherrypy.config.update({'server.socket_host':'0.0.0.0'})
-        cherrypy.config.update({'server.socket_port':self.port})
-        cherrypy.tree.mount(ServerRoot(self.downloader))
-
-        cherrypy.engine.start()
         self.downloader.start()
 
     ############################################################################
     def stop(self):
         self.downloader.stop()
-        cherrypy.engine.exit()
+
+################################################################################
+class Server:
+    ############################################################################
+    def __init__(self, port, nntp_credentials, download_dir, nzb_name, nzb_content):
+        self.port = port
+        
+        cherrypy.engine.autoshutdown  = AutoShutdownMonitor(cherrypy.engine, 30)
+        cherrypy.engine.autoshutdown.subscribe()
+        
+        cherrypy.engine.nzbdownloader = NzbDownloaderPlugin(cherrypy.engine, nntp_credentials, download_dir, nzb_name, nzb_content)
+        cherrypy.engine.nzbdownloader.subscribe()
 
     ############################################################################
-    def has_timeouted(self):
-        return cherrypy.tools.autoshutdown.has_timeouted()
+    def run(self):
+        cherrypy.config.update({'engine.autoreload.on':False})
+        cherrypy.config.update({'server.socket_host':'0.0.0.0'})
+        cherrypy.config.update({'server.socket_port':self.port})
+
+        cherrypy.quickstart(ServerRoot())
 
 ################################################################################
 class ServerRoot:
     ############################################################################
-    def __init__(self, downloader):
-        self.downloader = downloader
-
-    ############################################################################
     @cherrypy.expose
-    @cherrypy.tools.autoshutdown()
+    @cherrypy.tools.connectioncounter()
     def index(self):
         rar_file = self._get_rar_file()
 
         result =  {
-                      'nzb':    os.path.basename(self.downloader.nzb_name),
+                      'nzb':    os.path.basename(cherrypy.engine.nzbdownloader.downloader.nzb_name),
                       'ready':  rar_file.is_ready if rar_file else None
                   }
 
@@ -86,7 +103,7 @@ class ServerRoot:
 
     ############################################################################
     @cherrypy.expose
-    @cherrypy.tools.autoshutdown()
+    @cherrypy.tools.connectioncounter()
     def download(self):
         rar_file = self._get_rar_file()
         if not rar_file or not rar_file.is_ready:
@@ -96,7 +113,7 @@ class ServerRoot:
 
     ############################################################################
     @cherrypy.expose
-    @cherrypy.tools.autoshutdown()
+    @cherrypy.tools.connectioncounter()
     def video(self):
         rar_file = self._get_rar_file()
         if not rar_file or not rar_file.is_ready:
@@ -123,7 +140,7 @@ class ServerRoot:
         RE_PART_01 = re.compile('.part01.rar$')
         RE_001     = re.compile('.001$')
 
-        rar_filenames = [os.path.join(dirpath, f) for dirpath, dirnames, files in os.walk(self.downloader.nzb_dir) for f in files if ((f.endswith('.rar') and (not 'subs' in f) and (not RE_PART_XX.search(f) or RE_PART_01.search(f))) or RE_001.search(f))]
+        rar_filenames = [os.path.join(dirpath, f) for dirpath, dirnames, files in os.walk(cherrypy.engine.nzbdownloader.downloader.nzb_dir) for f in files if ((f.endswith('.rar') and (not 'subs' in f) and (not RE_PART_XX.search(f) or RE_PART_01.search(f))) or RE_001.search(f))]
         if rar_filenames:
             return rar_filenames[0]
 
