@@ -94,6 +94,7 @@ class ServerRoot:
         rar_file = self._get_rar_file()
 
         result =  {
+                      'first':  cherrypy.engine.nzbdownloader.downloader.get_first_rar_path(),
                       'nzb':    os.path.basename(cherrypy.engine.nzbdownloader.downloader.nzb_name),
                       'ready':  rar_file.is_ready if rar_file else None
                   }

@@ -7,6 +7,7 @@ import re
 import sys
 import threading
 import yenc
+import zlib
 
 from multiprocessing.pool import ThreadPool
 
@@ -70,12 +71,30 @@ class Downloader(threading.Thread):
         sys.stdout.write('[nzb2http][downloader] Downloading {0}\n'.format(nzb_name))
         self.nzb_files = pynzb.nzb_parser.parse(nzb_content)
         for nzb_file in self.nzb_files:
-            nzb_file.name = RE_NZB_FILE_NAME.search(nzb_file.subject).group(1)
-        self.nzb_files = self._sort_files(self.nzb_files)
+            nzb_file.name  = RE_NZB_FILE_NAME.search(nzb_file.subject).group(1)
+            nzb_file.path  = os.path.join(self.nzb_dir, nzb_file.name)
 
-        sys.stdout.write('[nzb2http][downloader] {0} files will be downloaded in order:\n'.format(len(self.nzb_files)))
-        for nzb_file in self.nzb_files:
-           sys.stdout.write('[nzb2http][downloader] - {0}\n'.format(nzb_file.name))
+        self.incomplete_files = list(self.nzb_files)
+
+        sfv_files = self._get_files(self.nzb_files, '.sfv')
+        if sfv_files and os.path.isfile(sfv_files[0].path):
+            sys.stdout.write('[nzb2http][downloader] - Verifying completeness using sfv file: {0}\n'.format(sfv_files[0].name))
+            complete_files, incomplete_files = self._parse_sfv_file(sfv_files[0].path, self.nzb_files)
+            for complete_file in complete_files:
+               sys.stdout.write('[nzb2http][downloader] - Complete: {0} ({1})\n'.format(complete_file.name, complete_file.crc32))
+            self.incomplete_files = incomplete_files
+        else:
+            sys.stdout.write('[nzb2http][downloader] - Verifying completeness using file presence\n')
+            for nzb_file in self.nzb_files:
+                if os.path.isfile(nzb_file.path):
+                    sys.stdout.write('[nzb2http][downloader] - Complete: {0}\n'.format(nzb_file.name))
+                    self.incomplete_files.remove(nzb_file)
+
+        self.incomplete_files = self._sort_files(self.incomplete_files)
+
+        sys.stdout.write('[nzb2http][downloader] {0} files will be downloaded in order:\n'.format(len(self.incomplete_files)))
+        for incomplete_file in self.incomplete_files:
+           sys.stdout.write('[nzb2http][downloader] - {0}\n'.format(incomplete_file.name))
 
         self.pool = ThreadPool(self.nntp_credentials['max_connections'], _init_worker, (self.nntp_credentials,))
 
@@ -84,13 +103,13 @@ class Downloader(threading.Thread):
         sys.stdout.write('[nzb2http][downloader] Started\n')
         self.stop_requested = False
 
-        for nzb_file in self.nzb_files:
-            map_result_async = self.pool.map_async(_run_worker, nzb_file.segments)
+        for incomplete_file in self.incomplete_files:
+            map_result_async = self.pool.map_async(_run_worker, incomplete_file.segments)
             while not self.stop_requested:
                 try:
                     map_result = map_result_async.get(1)
-                    sys.stdout.write('[nzb2http][downloader] Downloaded {0}\n'.format(os.path.join(self.nzb_dir, nzb_file.name)))
-                    self._write_nzb_file(nzb_file.name, map_result)
+                    sys.stdout.write('[nzb2http][downloader] Downloaded {0}\n'.format(incomplete_file.path))
+                    self._write_nzb_file(incomplete_file, map_result)
                     break
                 except multiprocessing.TimeoutError:
                     pass
@@ -108,7 +127,7 @@ class Downloader(threading.Thread):
 
     ############################################################################
     def get_first_rar_path(self):
-        return os.path.join(self.nzb_dir, self._get_first_rar_file(self.nzb_files).name)
+        return self._get_first_rar_file(self.nzb_files).path
 
     ############################################################################
     def _sort_files(self, nzb_files):
@@ -146,7 +165,8 @@ class Downloader(threading.Thread):
                     rar_files.append(nzb_file)
         
         rar_files.sort(key=lambda rar_file: rar_file.name)
-        rar_files.insert(0, first_rar_file)
+        if first_rar_file:
+            rar_files.insert(0, first_rar_file)
         return rar_files
 
     ############################################################################
@@ -158,10 +178,42 @@ class Downloader(threading.Thread):
         return files
 
     ############################################################################
-    def _write_nzb_file(self, nzb_file_name, nzb_segments):
+    def _get_file_crc32(self, nzb_file):
+        if os.path.isfile(nzb_file.path):
+            return '%X' % (zlib.crc32(open(nzb_file.path, 'rb').read()) & 0xFFFFFFFF)
+
+    ############################################################################
+    def _parse_sfv_file(self, sfv_file_name, nzb_files):
+        RE_SFV_LINE = re.compile('(\S+)\s+(\w+)')
+
+        complete_files   = []
+        incomplete_files = []
+
+        sfv_data = {}
+        with open(sfv_file_name, 'r') as sfv_file:
+            for sfv_line in sfv_file:
+                sfv_data[RE_SFV_LINE.search(sfv_line).group(1).lower()] = RE_SFV_LINE.search(sfv_line).group(2).lower()
+
+        for nzb_file in nzb_files:
+            if not hasattr(nzb_file, 'crc32'):
+                nzb_file.crc32 = self._get_file_crc32(nzb_file)
+                if nzb_file.crc32 == None:
+                    incomplete_files.append(nzb_file)
+                    continue
+
+            if nzb_file.name.lower() in sfv_data:
+                if nzb_file.crc32.lower() == sfv_data[nzb_file.name.lower()].lower():
+                    complete_files.append(nzb_file)
+                else:
+                    incomplete_files.append(nzb_file)
+
+        return (complete_files, incomplete_files)
+
+    ############################################################################
+    def _write_nzb_file(self, nzb_file, nzb_segments):
         if not os.path.isdir(self.nzb_dir):
             os.makedirs(self.nzb_dir)
 
-        with open(os.path.join(self.nzb_dir, nzb_file_name), 'w+', 0) as nzb_file:
+        with open(os.path.join(nzb_file.path), 'w+', 0) as nzb_file:
             for nzb_segment in nzb_segments:
                 nzb_file.write(nzb_segment)
