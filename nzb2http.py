@@ -16,6 +16,7 @@ def main():
     arg_parser.add_argument('-d', '--download-dir', default='.', help='Directory to use for downloading')
     arg_parser.add_argument('-s', '--ssl', action='store_true', help='Use SSL connection')
     arg_parser.add_argument('-m', '--connections', default=1, help='Max concurrent connections')
+    arg_parser.add_argument('-t', '--timeout', default=30, help='Automatic shutdown timeout')
     args = arg_parser.parse_args()
 
     RE_HOST = re.compile('(.+):(.+)@(.+):(\d+)')
@@ -39,7 +40,7 @@ def main():
         with open(filename, 'r') as nzb:
             nzb_content = nzb.read()        
 
-    server = nzb2http.server.Server(int(args.http_port), nntp_credentials, args.download_dir, nzb_name, nzb_content)
+    server = nzb2http.server.Server(int(args.http_port), nntp_credentials, args.download_dir, int(args.timeout), nzb_name, nzb_content)
     server.run()
 
 ################################################################################

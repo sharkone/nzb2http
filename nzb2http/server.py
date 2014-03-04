@@ -69,10 +69,10 @@ class NzbDownloaderPlugin(cherrypy.process.plugins.SimplePlugin):
 ################################################################################
 class Server:
     ############################################################################
-    def __init__(self, port, nntp_credentials, download_dir, nzb_name, nzb_content):
+    def __init__(self, port, nntp_credentials, download_dir, timeout, nzb_name, nzb_content):
         self.port = port
         
-        cherrypy.engine.autoshutdown = AutoShutdownMonitor(cherrypy.engine, 30)
+        cherrypy.engine.autoshutdown = AutoShutdownMonitor(cherrypy.engine, timeout)
         cherrypy.engine.autoshutdown.subscribe()
         
         cherrypy.engine.nzbdownloader = NzbDownloaderPlugin(cherrypy.engine, nntp_credentials, download_dir, nzb_name, nzb_content)

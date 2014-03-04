@@ -8,6 +8,8 @@ import sys
 import threading
 import yenc
 
+from multiprocessing.pool import ThreadPool
+
 ################################################################################
 RE_NZB_FILE_NAME = re.compile('\"(.+)\"')
 
@@ -75,7 +77,7 @@ class Downloader(threading.Thread):
         for nzb_file in self.nzb_files:
            sys.stdout.write('[nzb2http][downloader] - {0}\n'.format(nzb_file.name))
 
-        self.pool = multiprocessing.pool.ThreadPool(self.nntp_credentials['max_connections'], _init_worker, (self.nntp_credentials,))
+        self.pool = ThreadPool(self.nntp_credentials['max_connections'], _init_worker, (self.nntp_credentials,))
 
     ############################################################################
     def run(self):
