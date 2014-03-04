@@ -7,7 +7,6 @@ import mimetypes
 import os
 import rarfile
 import re
-import signal
 import time
 
 from cherrypy.lib.static import serve_fileobj
