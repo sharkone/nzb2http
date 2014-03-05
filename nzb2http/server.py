@@ -12,9 +12,6 @@ import time
 from cherrypy.lib.static import serve_fileobj
 
 ################################################################################
-RAR_FILE = None
-
-################################################################################
 class ConnectionCounterTool(cherrypy.Tool):
     ############################################################################
     def __init__(self):
@@ -91,55 +88,57 @@ class ServerRoot:
     @cherrypy.expose
     @cherrypy.tools.connectioncounter()
     def index(self):
-        rar_file = self._get_rar_file()
+        rar_file = None
 
-        result =  {
-                      'first':  cherrypy.engine.nzbdownloader.downloader.get_first_rar_path(),
-                      'nzb':    os.path.basename(cherrypy.engine.nzbdownloader.downloader.nzb_name),
-                      'ready':  rar_file.is_ready if rar_file else None
-                  }
+        try:
+            rar_file = rarfile.RarFile(cherrypy.engine.nzbdownloader.downloader.get_first_rar_path())
 
-        return json.dumps(result)
+            result =  {
+                          'first':  cherrypy.engine.nzbdownloader.downloader.get_first_rar_path(),
+                          'nzb':    os.path.basename(cherrypy.engine.nzbdownloader.downloader.nzb_name),
+                      }
+
+            return json.dumps(result)
+        except Exception as exception:
+            return 'Not ready yet: {0}'.format(exception)
+        finally:
+            if rar_file:
+                rar_file.close()
 
     ############################################################################
     @cherrypy.expose
     @cherrypy.tools.connectioncounter()
     def download(self):
-        rar_file = self._get_rar_file()
-        if not rar_file or not rar_file.is_ready:
-            return 'Data is not ready yet!'
-
-        return serve_fileobj(rar_file, content_type='application/x-download', content_length=rar_file.content_file_size, last_modified=time.time(), disposition='attachment', name=rar_file.content_file_name)
+        try:
+            rar_file = rarfile.RarFile(cherrypy.engine.nzbdownloader.downloader.get_first_rar_path())
+            if not rar_file.is_ready:
+                return 'Data is not ready yet!'
+            return serve_fileobj(rar_file, content_type='application/x-download', content_length=rar_file.content_file_size, last_modified=time.time(), disposition='attachment', name=rar_file.content_file_name)
+        finally:
+            rar_file.close()
 
     ############################################################################
     @cherrypy.expose
     @cherrypy.tools.connectioncounter()
     def video(self):
-        rar_file = self._get_rar_file()
-        if not rar_file or not rar_file.is_ready:
-            return 'Data is not ready yet!'
+        try:
+            rar_file = rarfile.RarFile(cherrypy.engine.nzbdownloader.downloader.get_first_rar_path())
+            if not rar_file.is_ready:
+                return 'Data is not ready yet!'
 
-        content_type = mimetypes.types_map.get(os.path.splitext(rar_file.content_file_name), None)
-        if not content_type:
-            if rar_file.content_file_name.endswith('.mkv'):
-                content_type = 'video/x-matroska'
-            elif rar_file.content_file_name.endswith('.mp4'):
-                content_type = 'video/mp4'
-    
-        return serve_fileobj(rar_file, content_type=content_type, content_length=rar_file.content_file_size, last_modified=time.time(), name=rar_file.content_file_name)
+            content_type = mimetypes.types_map.get(os.path.splitext(rar_file.content_file_name), None)
+            if not content_type:
+                if rar_file.content_file_name.endswith('.mkv'):
+                    content_type = 'video/x-matroska'
+                elif rar_file.content_file_name.endswith('.mp4'):
+                    content_type = 'video/mp4'
+        
+            return serve_fileobj(rar_file, content_type=content_type, content_length=rar_file.content_file_size, last_modified=time.time(), name=rar_file.content_file_name)
+        finally:
+            rar_file.close()
 
     ############################################################################
     @cherrypy.expose
     def shutdown(self):
         cherrypy.engine.exit()
         return 'OK'
-
-    ############################################################################
-    def _get_rar_file(self):
-        global RAR_FILE
-
-        rar_path = cherrypy.engine.nzbdownloader.downloader.get_first_rar_path()
-        if not RAR_FILE and rar_path != None:
-            RAR_FILE = rarfile.RarFile(rar_path)
-
-        return RAR_FILE
