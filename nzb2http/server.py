@@ -9,7 +9,7 @@ import rarfile
 import re
 import time
 
-from cherrypy.lib.static import serve_fileobj
+from cherrypy.lib.static import serve_fileobj, serve_file
 
 ################################################################################
 class ConnectionCounterTool(cherrypy.Tool):
@@ -88,54 +88,67 @@ class ServerRoot:
     @cherrypy.expose
     @cherrypy.tools.connectioncounter()
     def index(self):
-        rar_file = None
+        return json.dumps(cherrypy.engine.nzbdownloader.downloader.extractor.files)
+        # rar_file = None
 
-        try:
-            rar_file = rarfile.RarFile(cherrypy.engine.nzbdownloader.downloader.get_first_rar_path())
+        # try:
+        #     rar_file = rarfile.RarFile(cherrypy.engine.nzbdownloader.downloader.get_first_rar_path())
 
-            result =  {
-                          'first':  cherrypy.engine.nzbdownloader.downloader.get_first_rar_path(),
-                          'nzb':    os.path.basename(cherrypy.engine.nzbdownloader.downloader.nzb_name),
-                      }
+        #     result =  {
+        #                   'first':              cherrypy.engine.nzbdownloader.downloader.get_first_rar_path(),
+        #                   'nzb':                os.path.basename(cherrypy.engine.nzbdownloader.downloader.nzb_name),
+        #                   'content_file_name':  rar_file.content_file_name,
+        #                   'content_file_size':  rar_file.content_file_size
+        #               }
 
-            return json.dumps(result)
-        except Exception as exception:
-            return 'Not ready yet: {0}'.format(exception)
-        finally:
-            if rar_file:
-                rar_file.close()
+        #     return json.dumps(result)
+        # except Exception as exception:
+        #     return 'Not ready yet: {0}'.format(exception)
 
     ############################################################################
     @cherrypy.expose
     @cherrypy.tools.connectioncounter()
     def download(self):
-        try:
-            rar_file = rarfile.RarFile(cherrypy.engine.nzbdownloader.downloader.get_first_rar_path())
-            if not rar_file.is_ready:
-                return 'Data is not ready yet!'
-            return serve_fileobj(rar_file, content_type='application/x-download', content_length=rar_file.content_file_size, last_modified=time.time(), disposition='attachment', name=rar_file.content_file_name)
-        finally:
-            rar_file.close()
+        pass
+        # rar_file = None
+
+        # try:
+        #     rar_file = rarfile.RarFile(cherrypy.engine.nzbdownloader.downloader.get_first_rar_path())
+        #     return serve_fileobj(rar_file, content_type='application/x-download', content_length=rar_file.content_file_size, last_modified=time.time(), disposition='attachment', name=rar_file.content_file_name)
+        # except Exception as exception:
+        #     return 'Not ready yet: {0}'.format(exception)
 
     ############################################################################
     @cherrypy.expose
     @cherrypy.tools.connectioncounter()
     def video(self):
-        try:
-            rar_file = rarfile.RarFile(cherrypy.engine.nzbdownloader.downloader.get_first_rar_path())
-            if not rar_file.is_ready:
-                return 'Data is not ready yet!'
+        video_file = os.path.abspath(cherrypy.engine.nzbdownloader.downloader.extractor.files[0])
 
-            content_type = mimetypes.types_map.get(os.path.splitext(rar_file.content_file_name), None)
-            if not content_type:
-                if rar_file.content_file_name.endswith('.mkv'):
-                    content_type = 'video/x-matroska'
-                elif rar_file.content_file_name.endswith('.mp4'):
-                    content_type = 'video/mp4'
+        content_type = mimetypes.types_map.get(os.path.splitext(video_file), None)
+        if not content_type:
+            if video_file.endswith('.mkv'):
+                content_type = 'video/x-matroska'
+            elif video_file.content_file_name.endswith('.mp4'):
+                content_type = 'video/mp4'
+
+        return serve_file(video_file, content_type=content_type)
+
+
+        # rar_file = None
+
+        # try:
+        #     rar_file = rarfile.RarFile(cherrypy.engine.nzbdownloader.downloader.get_first_rar_path())
+
+        #     content_type = mimetypes.types_map.get(os.path.splitext(rar_file.content_file_name), None)
+        #     if not content_type:
+        #         if rar_file.content_file_name.endswith('.mkv'):
+        #             content_type = 'video/x-matroska'
+        #         elif rar_file.content_file_name.endswith('.mp4'):
+        #             content_type = 'video/mp4'
         
-            return serve_fileobj(rar_file, content_type=content_type, content_length=rar_file.content_file_size, last_modified=time.time(), name=rar_file.content_file_name)
-        finally:
-            rar_file.close()
+        #     return serve_fileobj(rar_file, content_type=content_type, content_length=rar_file.content_file_size, last_modified=time.time(), name=rar_file.content_file_name)
+        # except Exception as exception:
+        #     return 'Not ready yet: {0}'.format(exception)
 
     ############################################################################
     @cherrypy.expose

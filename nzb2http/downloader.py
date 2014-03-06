@@ -1,4 +1,5 @@
 ################################################################################
+import extractor
 import multiprocessing
 import nntp
 import os
@@ -98,6 +99,9 @@ class Downloader(threading.Thread):
 
         self.pool = ThreadPool(self.nntp_credentials['max_connections'], _init_worker, (self.nntp_credentials,))
 
+        self.extractor = extractor.Extractor(self.get_first_rar_path())
+        self.extractor.start()
+
     ############################################################################
     def run(self):
         sys.stdout.write('[nzb2http][downloader] Started\n')
@@ -122,6 +126,10 @@ class Downloader(threading.Thread):
     ############################################################################
     def stop(self):
         sys.stdout.write('[nzb2http][downloader] Stopping\n')
+        
+        if self.extractor:
+            self.extractor.stop()
+
         self.stop_requested = True
         self.join()
 
@@ -217,3 +225,4 @@ class Downloader(threading.Thread):
         with open(os.path.join(nzb_file.path), 'w+', 0) as nzb_file:
             for nzb_segment in nzb_segments:
                 nzb_file.write(nzb_segment)
+
