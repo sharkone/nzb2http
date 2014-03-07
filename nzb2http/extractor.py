@@ -34,13 +34,15 @@ class Extractor(threading.Thread):
             header_result, header_data = self._read_header(archive_handle)
             while not self.stop_requested and header_result == unrarlib.constants.SUCCESS:
                 try:
-                    file_path = os.path.join(os.path.dirname(self.rar_path), header_data.FileName)
-                    self.files.append(file_path)
+                    file_info = {}
+                    file_info['path'] = os.path.join(os.path.dirname(self.rar_path), header_data.FileName)
+                    file_info['size'] = header_data.UnpSize
+                    self.files.append(file_info)
 
-                    if not os.path.isdir(os.path.dirname(file_path)):
-                        os.makedirs(os.path.dirname(file_path))
+                    if not os.path.isdir(os.path.dirname(file_info['path'])):
+                        os.makedirs(os.path.dirname(file_info['path']))
 
-                    with open(file_path, 'wb') as output_file:
+                    with open(file_info['path'], 'wb') as output_file:
                         self.output_file = output_file
                         unrarlib.RARSetCallback(archive_handle, callback, ctypes.addressof(ctypes.py_object(output_file)))
                         unrarlib.RARProcessFileW(archive_handle, unrarlib.constants.RAR_TEST, None, None)
@@ -62,9 +64,9 @@ class Extractor(threading.Thread):
         self.join()
 
         for file in self.files:
-            if os.path.isfile(file):
-                sys.stdout.write('[nzb2http][extractor] Deleting {0}\n'.format(file))
-                os.remove(file)
+            if os.path.isfile(file['path']):
+                sys.stdout.write('[nzb2http][extractor] Deleting {0}\n'.format(file['path']))
+                os.remove(file['path'])
 
     ############################################################################
     def _read_header(self, archive_handle):

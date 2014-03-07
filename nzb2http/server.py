@@ -9,7 +9,7 @@ import rarfile
 import re
 import time
 
-from cherrypy.lib.static import serve_fileobj, serve_file
+from cherrypy.lib.static import serve_fileobj
 
 ################################################################################
 class ConnectionCounterTool(cherrypy.Tool):
@@ -26,12 +26,10 @@ class ConnectionCounterTool(cherrypy.Tool):
 
     ############################################################################
     def _before_handler(self):
-        print '_before_handler'
         self.connection_count = self.connection_count + 1
 
     ############################################################################
     def _on_end_request(self):
-        print '_on_end_request'
         self.connection_count = self.connection_count - 1
         if not self.connection_count:
             self.last_connection_time = datetime.datetime.now()
@@ -100,7 +98,7 @@ class ServerRoot:
         if not video_file:
             return 'Not ready!'
 
-        return serve_file(video_file, content_type='application/x-download', disposition='attachment')
+        return serve_fileobj(open(video_file['path'], 'rb'), content_type='application/x-download', content_length=video_file['size'], disposition='attachment', name=os.path.basename(video_file['path']))
 
     ############################################################################
     @cherrypy.expose
@@ -110,15 +108,15 @@ class ServerRoot:
         if not video_file:
             return 'Not ready!'
 
-        content_type = mimetypes.types_map.get(os.path.splitext(video_file), None)
+        content_type = mimetypes.types_map.get(os.path.splitext(video_file['path']), None)
         
         if not content_type:
-            if video_file.endswith('.mkv'):
+            if video_file['path'].endswith('.mkv'):
                 content_type = 'video/x-matroska'
-            elif video_file.endswith('.mp4'):
+            elif video_file['path'].endswith('.mp4'):
                 content_type = 'video/mp4'
 
-        return serve_file(video_file, content_type=content_type)
+        return serve_fileobj(open(video_file['path'], 'rb'), content_type=content_type, content_length=video_file['size'], name=os.path.basename(video_file['path']))
 
     ############################################################################
     @cherrypy.expose
@@ -130,5 +128,5 @@ class ServerRoot:
     def _get_first_video_file(self, files):
         video_file = None
         for file in cherrypy.engine.nzbdownloader.downloader.extractor.files:
-            if file.endswith('.mkv') or file.endswith('.mp4'):
-                return os.path.abspath(file)
+            if file['path'].endswith('.mkv') or file['path'].endswith('.mp4'):
+                return file
