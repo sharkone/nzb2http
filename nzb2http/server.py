@@ -3,6 +3,7 @@ import cherrypy
 import datetime
 import downloader
 import json
+import filewrapper
 import mimetypes
 import os
 import rarfile
@@ -98,7 +99,7 @@ class ServerRoot:
         if not video_file:
             return 'Not ready!'
 
-        return serve_fileobj(open(video_file['path'], 'rb'), content_type='application/x-download', content_length=video_file['size'], disposition='attachment', name=os.path.basename(video_file['path']))
+        return serve_fileobj(filewrapper.FileWrapper(video_file['path'], video_file['size']), content_type='application/x-download', content_length=video_file['size'], disposition='attachment', name=os.path.basename(video_file['path']))
 
     ############################################################################
     @cherrypy.expose
@@ -116,7 +117,7 @@ class ServerRoot:
             elif video_file['path'].endswith('.mp4'):
                 content_type = 'video/mp4'
 
-        return serve_fileobj(open(video_file['path'], 'rb'), content_type=content_type, content_length=video_file['size'], name=os.path.basename(video_file['path']))
+        return serve_fileobj(filewrapper.FileWrapper(video_file['path'], video_file['size']), content_type=content_type, content_length=video_file['size'], name=os.path.basename(video_file['path']))
 
     ############################################################################
     @cherrypy.expose
