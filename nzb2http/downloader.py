@@ -77,19 +77,19 @@ class Downloader(threading.Thread):
 
         self.incomplete_files = list(self.nzb_files)
 
-        sfv_files = self._get_files(self.nzb_files, '.sfv')
-        if sfv_files and os.path.isfile(sfv_files[0].path):
-            sys.stdout.write('[nzb2http][downloader] - Verifying completeness using sfv file: {0}\n'.format(sfv_files[0].name))
-            complete_files, incomplete_files = self._parse_sfv_file(sfv_files[0].path, self.nzb_files)
-            for complete_file in complete_files:
-               sys.stdout.write('[nzb2http][downloader] - Complete: {0} ({1})\n'.format(complete_file.name, complete_file.crc32))
-            self.incomplete_files = incomplete_files
-        else:
-            sys.stdout.write('[nzb2http][downloader] - Verifying completeness using file presence\n')
-            for nzb_file in self.nzb_files:
-                if os.path.isfile(nzb_file.path):
-                    sys.stdout.write('[nzb2http][downloader] - Complete: {0}\n'.format(nzb_file.name))
-                    self.incomplete_files.remove(nzb_file)
+        # sfv_files = self._get_files(self.nzb_files, '.sfv')
+        # if sfv_files and os.path.isfile(sfv_files[0].path):
+        #     sys.stdout.write('[nzb2http][downloader] - Verifying completeness using sfv file: {0}\n'.format(sfv_files[0].name))
+        #     complete_files, incomplete_files = self._parse_sfv_file(sfv_files[0].path, self.nzb_files)
+        #     for complete_file in complete_files:
+        #        sys.stdout.write('[nzb2http][downloader] - Complete: {0} ({1})\n'.format(complete_file.name, complete_file.crc32))
+        #     self.incomplete_files = incomplete_files
+        # else:
+        #     sys.stdout.write('[nzb2http][downloader] - Verifying completeness using file presence\n')
+        #     for nzb_file in self.nzb_files:
+        #         if os.path.isfile(nzb_file.path):
+        #             sys.stdout.write('[nzb2http][downloader] - Complete: {0}\n'.format(nzb_file.name))
+        #             self.incomplete_files.remove(nzb_file)
 
         self.incomplete_files = self._sort_files(self.incomplete_files)
 
@@ -99,21 +99,21 @@ class Downloader(threading.Thread):
 
         self.pool = ThreadPool(self.nntp_credentials['max_connections'], _init_worker, (self.nntp_credentials,))
 
-        self.extractor = extractor.Extractor(self.get_first_rar_path())
-        self.extractor.start()
-
     ############################################################################
     def run(self):
         sys.stdout.write('[nzb2http][downloader] Started\n')
         self.stop_requested = False
+
+        self.extractor = extractor.Extractor(self.get_first_rar_path())
+        self.extractor.start()
 
         for incomplete_file in self.incomplete_files:
             map_result_async = self.pool.map_async(_run_worker, incomplete_file.segments)
             while not self.stop_requested:
                 try:
                     map_result = map_result_async.get(1)
-                    sys.stdout.write('[nzb2http][downloader] Downloaded {0}\n'.format(incomplete_file.path))
                     self._write_nzb_file(incomplete_file, map_result)
+                    sys.stdout.write('[nzb2http][downloader] Downloaded {0}\n'.format(incomplete_file.path))
                     break
                 except multiprocessing.TimeoutError:
                     pass
@@ -126,10 +126,8 @@ class Downloader(threading.Thread):
     ############################################################################
     def stop(self):
         sys.stdout.write('[nzb2http][downloader] Stopping\n')
-        
-        if self.extractor:
-            self.extractor.stop()
 
+        self.extractor.stop()
         self.stop_requested = True
         self.join()
 
@@ -185,44 +183,55 @@ class Downloader(threading.Thread):
                 files.append(nzb_file)
         return files
 
-    ############################################################################
-    def _get_file_crc32(self, nzb_file):
-        if os.path.isfile(nzb_file.path):
-            return '%X' % (zlib.crc32(open(nzb_file.path, 'rb').read()) & 0xFFFFFFFF)
+    # ############################################################################
+    # def _get_file_crc32(self, nzb_file):
+    #     if os.path.isfile(nzb_file.path):
+    #         return '%X' % (zlib.crc32(open(nzb_file.path, 'rb').read()) & 0xFFFFFFFF)
 
-    ############################################################################
-    def _parse_sfv_file(self, sfv_file_name, nzb_files):
-        RE_SFV_LINE = re.compile('(\S+)\s+(\w+)')
+    # ############################################################################
+    # def _parse_sfv_file(self, sfv_file_name, nzb_files):
+    #     RE_SFV_LINE = re.compile('(\S+)\s+(\w+)')
 
-        complete_files   = []
-        incomplete_files = []
+    #     complete_files   = []
+    #     incomplete_files = []
 
-        sfv_data = {}
-        with open(sfv_file_name, 'r') as sfv_file:
-            for sfv_line in sfv_file:
-                sfv_data[RE_SFV_LINE.search(sfv_line).group(1).lower()] = RE_SFV_LINE.search(sfv_line).group(2).lower()
+    #     sfv_data = {}
+    #     with open(sfv_file_name, 'r') as sfv_file:
+    #         for sfv_line in sfv_file:
+    #             sfv_data[RE_SFV_LINE.search(sfv_line).group(1).lower()] = RE_SFV_LINE.search(sfv_line).group(2).lower()
 
-        for nzb_file in nzb_files:
-            if not hasattr(nzb_file, 'crc32'):
-                nzb_file.crc32 = self._get_file_crc32(nzb_file)
-                if nzb_file.crc32 == None:
-                    incomplete_files.append(nzb_file)
-                    continue
+    #     for nzb_file in nzb_files:
+    #         if not hasattr(nzb_file, 'crc32'):
+    #             nzb_file.crc32 = self._get_file_crc32(nzb_file)
+    #             if nzb_file.crc32 == None:
+    #                 incomplete_files.append(nzb_file)
+    #                 continue
 
-            if nzb_file.name.lower() in sfv_data:
-                if nzb_file.crc32.lower() == sfv_data[nzb_file.name.lower()].lower():
-                    complete_files.append(nzb_file)
-                else:
-                    incomplete_files.append(nzb_file)
+    #         if nzb_file.name.lower() in sfv_data:
+    #             if nzb_file.crc32.lower() == sfv_data[nzb_file.name.lower()].lower():
+    #                 complete_files.append(nzb_file)
+    #             else:
+    #                 incomplete_files.append(nzb_file)
 
-        return (complete_files, incomplete_files)
+    #     return (complete_files, incomplete_files)
 
     ############################################################################
     def _write_nzb_file(self, nzb_file, nzb_segments):
         if not os.path.isdir(self.nzb_dir):
             os.makedirs(self.nzb_dir)
 
-        with open(os.path.join(nzb_file.path), 'w+', 0) as nzb_file:
-            for nzb_segment in nzb_segments:
-                nzb_file.write(nzb_segment)
+        total_size = 0
+        for nzb_segment in nzb_segments:
+            total_size += len(nzb_segment)
 
+        nzb_file_path_incomplete = nzb_file.path + '.incomplete'
+        with open(nzb_file_path_incomplete, 'w+', 0) as nzb_file_fd:
+            for nzb_segment in nzb_segments:
+                nzb_file_fd.write(nzb_segment)
+                nzb_file_fd.flush()
+                os.fsync(nzb_file_fd.fileno())
+
+        while os.path.getsize(nzb_file_path_incomplete) != total_size:
+            time.sleep(0.1)
+
+        os.rename(nzb_file_path_incomplete, nzb_file.path)

@@ -23,33 +23,48 @@ class Extractor(threading.Thread):
         while not self.stop_requested and not os.path.isfile(self.rar_path):
             time.sleep(1)
 
-        sys.stdout.write('[nzb2http][extractor] {0} found\n'.format(self.rar_path))
+        if not self.stop_requested:
+            sys.stdout.write('[nzb2http][extractor] Extracting from {0}\n'.format(self.rar_path))
 
-        archive_data   = unrarlib.RAROpenArchiveDataEx(self.rar_path, mode=unrarlib.constants.RAR_OM_EXTRACT)
-        archive_handle = unrarlib.RAROpenArchiveEx(ctypes.byref(archive_data))  
-        
-        callback = unrarlib.UNRARCALLBACK(self._callback)
-
-        header_result, header_data = self._read_header(archive_handle)
-        while not self.stop_requested and header_result == unrarlib.constants.SUCCESS:
-            self.files.append(header_data.FileName)
-
-            with open(header_data.FileName, 'wb') as output_file:
-                self.output_file = output_file
-                unrarlib.RARSetCallback(archive_handle, callback, ctypes.addressof(ctypes.py_object(output_file)))
-                unrarlib.RARProcessFileW(archive_handle, unrarlib.constants.RAR_TEST, None, None)
-                self.output_file = None
+            archive_data   = unrarlib.RAROpenArchiveDataEx(self.rar_path, mode=unrarlib.constants.RAR_OM_EXTRACT)
+            archive_handle = unrarlib.RAROpenArchiveEx(ctypes.byref(archive_data))  
+            
+            callback = unrarlib.UNRARCALLBACK(self._callback)
 
             header_result, header_data = self._read_header(archive_handle)
+            while not self.stop_requested and header_result == unrarlib.constants.SUCCESS:
+                try:
+                    file_path = os.path.join(os.path.dirname(self.rar_path), header_data.FileName)
+                    self.files.append(file_path)
 
-        unrarlib.RARCloseArchive(archive_handle)
+                    if not os.path.isdir(os.path.dirname(file_path)):
+                        os.makedirs(os.path.dirname(file_path))
 
-        sys.stdout.write('[nzb2http][extractor] Extraction complete\n')
+                    with open(file_path, 'wb') as output_file:
+                        self.output_file = output_file
+                        unrarlib.RARSetCallback(archive_handle, callback, ctypes.addressof(ctypes.py_object(output_file)))
+                        unrarlib.RARProcessFileW(archive_handle, unrarlib.constants.RAR_TEST, None, None)
+                        self.output_file = None
+
+                    header_result, header_data = self._read_header(archive_handle)
+
+                except unrarlib.UnrarException as exception:
+                    sys.stdout.write('[nzb2http][extractor] UnrarException: {0}\n'.format(exception))
+
+            unrarlib.RARCloseArchive(archive_handle)
+
+        sys.stdout.write('[nzb2http][extractor] Stopped\n')
 
     ############################################################################
     def stop(self):
+        sys.stdout.write('[nzb2http][extractor] Stopping\n')
         self.stop_requested = True
         self.join()
+
+        for file in self.files:
+            if os.path.isfile(file):
+                sys.stdout.write('[nzb2http][extractor] Deleting {0}\n'.format(file))
+                os.remove(file)
 
     ############################################################################
     def _read_header(self, archive_handle):
